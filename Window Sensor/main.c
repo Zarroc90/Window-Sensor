@@ -13,7 +13,7 @@ int main(void) {
 	read =0;
 
 
-	InitSPI();
+	Init();
 
 	switch (sensor) {
 		case MPU9250:
@@ -257,32 +257,46 @@ void String_number_rightify(float number, char str[]){
 	}
 }
 
-void InitSPI(){
+void Init(){
 	//--------------Init SPI ----------------------------------------------------------------------
 
 	// Sensor			MPU9250			LSM9DS1			BMX055			BMI160
-	//Port 1.7	CS											M
-	//Port 1.6	CS							M				G
-	//Port 1.5  CS		AGM					AG				A
-	//Port 1.4	CLK
-	//Port 1.3  Int
-	//Port 1.2	MOSI
-	//Port 1.1	MISO
+	//Port 1.0	CS											M
+	//Port 1.1	CS							M				G
+	//Port 1.2  CS		AGM					AG				A
+	//Port 1.3	Int
+	//Port 1.5  CLK
+	//Port 1.6	MISO
+	//Port 1.7	MOSI
 
 	WDTCTL = WDTPW + WDTHOLD; 								// Stop WDT
 
-	P1OUT |= BIT5 + BIT6 + BIT7;							//Port 1.5,1.6,1.7 as High
-	P1DIR |= BIT5 + BIT6 + BIT7;							//Port 1.5,1.6,1.7 as Output
-	P1SEL = BIT1 | BIT2 | BIT4;								//Port Bit 1,2,4 as SPI Interface
-	P1SEL2 = BIT1 | BIT2 | BIT4;							//Port Bit 1,2,4 as SPI Interfasce
+	/* Use Calibration values for 1MHz Clock DCO*/
+	DCOCTL = 0;
+	BCSCTL1 = CALBC1_1MHZ;
+	DCOCTL = CALDCO_1MHZ;
+
+	P2OUT |= BIT0 + BIT1 + BIT2;							//Port 2.0,2.1,2.2 as High
+	P2DIR |= BIT0 + BIT1 + BIT2;							//Port 2.0,2.1,2.2 as Output
+	P1SEL = BIT5 | BIT6 | BIT7;								//Port Bit 1,2,4 as SPI Interface
+	P1SEL2 = BIT5 | BIT6 | BIT7;							//Port Bit 1,2,4 as SPI Interface
+
+	UCB0CTL1 = UCSWRST;
+	UCB0CTL0 |= /*UCCKPH +*/ UCCKPL + UCMSB + UCMST + UCSYNC; 	// 3-pin, 8-bit SPI master
+	UCB0CTL1 |= UCSSEL_2; 									// SMCLK
+	UCB0BR0 |= 0x02; 										// /2
+	UCB0BR1 = 0; 											//
+	UCB0CTL1 &= ~UCSWRST; 									// **Initialize USCI state machine**
 
 	UCA0CTL1 = UCSWRST;
-	UCA0CTL0 |= /*UCCKPH +*/ UCCKPL + UCMSB + UCMST + UCSYNC; 	// 3-pin, 8-bit SPI master
 	UCA0CTL1 |= UCSSEL_2; 									// SMCLK
-	UCA0BR0 |= 0x02; 										// /2
-	UCA0BR1 = 0; 											//
-	UCA0MCTL = 0; 											// No modulation
+	UCA0BR0 = 104;											// 1MHz 9600
+	UCA0BR1 = 0; 											// 1MHz 9600
+	UCA0MCTL = UCBRS0; 										// Modulation UCBRSx = 1
 	UCA0CTL1 &= ~UCSWRST; 									// **Initialize USCI state machine**
+
+	/* Enable USCI_A0 RX interrupt */
+	IE2 |= UCA0RXIE;
 
 
 	//P1DIR |= BIT6;											//LED2 as OUtput
@@ -739,4 +753,11 @@ __interrupt void Port_1(void){
 
 	read=1;
 	P1IFG &= ~BIT3;				//Clear Interrupt Flag
+}
+
+#pragma vector=USCIAB0RX_VECTOR
+__interrupt void USCI0RX_ISR(void)
+{
+    while (!(IFG2&UCA0TXIFG)); // USCI_A0 TX buffer ready?
+    UCA0TXBUF = UCA0RXBUF; // TX -&amp;gt; RXed character
 }

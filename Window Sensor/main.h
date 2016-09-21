@@ -32,10 +32,10 @@ enum sensor_type{
 
 #define	M_PI		3.14159265358979323846	/* pi */
 
-#define CS_0 	BIT5
-#define CS_1	BIT6
-#define CS_2	BIT7
-#define	CS_3	BIT2
+#define CS_0 	BIT0
+#define CS_1	BIT1
+#define CS_2	BIT2
+
 
 int sensor,read;
 int accelorameter_raw[3];
@@ -52,7 +52,7 @@ float pitch,roll,pax,pay,paz;
 float temperature;
 
 void String_number_rightify(float number, char *str);
-void InitSPI();
+void Init();
 void Init_MPU9250();
 void Init_LSM9DS1();
 void Init_BMX055();
