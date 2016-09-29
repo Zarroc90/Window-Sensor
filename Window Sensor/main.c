@@ -43,8 +43,34 @@ int main(void) {
 
 	__enable_interrupt();
 
+	Uart_TransmitTxPack(0x02,"Feuerwehr",9);
 	while(1)
 	{
+		 switch (rx_State) {
+		    case rxCRC:
+				if (uart_rx_received==1) {
+					if (rx_CRC == PackCRC(rxPackArray, rx_LEN)) {
+							rx_State = rxPARSE;
+							Uart_putchar(ACK);
+							}
+						  else {
+							rx_State = rxIDLE;
+							rx_CMD = 0x00;
+							Uart_putchar(NAK);
+						  }
+				}
+				break;
+		    case rxPARSE:
+		    	rx_State = rxIDLE;
+		    	      switch (rx_CMD) {
+		    	        case RXDATA:
+		    	          //getSensors();
+		    	          break;
+		    	      }
+		    	      rx_CMD = 0x00;
+		    	      break;
+		 }
+
 
 		switch (sensor) {
 				case MPU9250:
@@ -86,8 +112,12 @@ int main(void) {
 				}
 				case BMX055:
 				{
-					//whoami=SPI_Read(BMX055_A,0x00);								//0xFA
+					whoami=SPI_Read(BMX055_A,0x00);									//0xFA
 					//whoami=SPI_Read(BMX055_M,0x40);									//0x32
+					//Uart_putchar("T");
+					//Uart_putchar("e");
+					//Uart_putchar("s");
+					//Uart_putchar("t");
 					if (read == 1) {
 						Read_Accelorameter(accelorameter_raw);
 						ax=accelorameter_raw[0]*aRes;
@@ -278,16 +308,18 @@ void Init(){
 
 	P2OUT |= BIT0 + BIT1 + BIT2;							//Port 2.0,2.1,2.2 as High
 	P2DIR |= BIT0 + BIT1 + BIT2;							//Port 2.0,2.1,2.2 as Output
-	P1SEL = BIT5 | BIT6 | BIT7;								//Port Bit 1,2,4 as SPI Interface
-	P1SEL2 = BIT5 | BIT6 | BIT7;							//Port Bit 1,2,4 as SPI Interface
+	P1SEL =  BIT1 | BIT2 | BIT5 | BIT6 | BIT7;								//Port1 Bit 5,6,7 as SPI Interface
+	P1SEL2 = BIT1 | BIT2 | BIT5 | BIT6 | BIT7;							//Port1 Bit 5,6,7 as SPI Interface
 
+	/* Configure UCB0 as SPI Interface*/
 	UCB0CTL1 = UCSWRST;
-	UCB0CTL0 |= /*UCCKPH +*/ UCCKPL + UCMSB + UCMST + UCSYNC; 	// 3-pin, 8-bit SPI master
+	UCB0CTL0 |= UCCKPL + UCMSB + UCMST + UCSYNC; 			// 3-pin, 8-bit SPI master
 	UCB0CTL1 |= UCSSEL_2; 									// SMCLK
 	UCB0BR0 |= 0x02; 										// /2
 	UCB0BR1 = 0; 											//
 	UCB0CTL1 &= ~UCSWRST; 									// **Initialize USCI state machine**
 
+	/* Configure UCA0 as UART Interface*/
 	UCA0CTL1 = UCSWRST;
 	UCA0CTL1 |= UCSSEL_2; 									// SMCLK
 	UCA0BR0 = 104;											// 1MHz 9600
@@ -301,9 +333,10 @@ void Init(){
 
 	//P1DIR |= BIT6;											//LED2 as OUtput
 	//P1OUT &= ~BIT6;											//LED2 as off
-	P1IE |= BIT3;											//P1.3 Interrupt enabled
+
+	/*P1IE |= BIT3;											//P1.3 Interrupt enabled
 	P1IES &= ~BIT3;											//Interrupt direction from low to high
-	P1IFG &= ~BIT3;											//P1.3 IFG is cleared
+	P1IFG &= ~BIT3;											//P1.3 IFG is cleared*/
 
 	//----------------Init SPI End----------------------------------------------------------------------
 
@@ -324,10 +357,6 @@ void Init(){
 		 * 		A		Address
 		 * 		D		Data
 		 * 		*/
-}
-
-void InitUART(){
-
 }
 
 void Init_MPU9250(){
@@ -719,24 +748,75 @@ char SPI_Transceive(char cs_signal,char reg,char data) {
 
 
 
-	P1OUT &= (~cs_signal); 							// Pin 1.5 LOW
+	P2OUT &= (~cs_signal); 							// Pin LOW
 
-	while (!(IFG2 & UCA0TXIFG)); 					// USCI_A0 TX buffer ready?
-	UCA0TXBUF = reg; 								// Send variable "reg" over SPI to Slave
-	while (!(IFG2 & UCA0RXIFG)); 					// USCI_A0 RX Received?
-	received_ch = UCA0RXBUF;						// Store received data
+	while (!(IFG2 & UCB0TXIFG)); 					// USCI_A0 TX buffer ready?
+	UCB0TXBUF = reg; 								// Send variable "reg" over SPI to Slave
+	while (!(IFG2 & UCB0RXIFG)); 					// USCI_A0 RX Received?
+	received_ch = UCB0RXBUF;						// Store received data
 
-	while (!(IFG2 & UCA0TXIFG)); 					// USCI_A0 TX buffer ready?
-	UCA0TXBUF = data; 								// Send variable "data" over SPI to Slave
-	while (!(IFG2 & UCA0RXIFG)); 					// USCI_A0 RX Received?
-	received_ch = UCA0RXBUF;						// Store received data
+	while (!(IFG2 & UCB0TXIFG)); 					// USCI_A0 TX buffer ready?
+	UCB0TXBUF = data; 								// Send variable "data" over SPI to Slave
+	while (!(IFG2 & UCB0RXIFG)); 					// USCI_A0 RX Received?
+	received_ch = UCB0RXBUF;						// Store received data
 
 
-	P1OUT |= (cs_signal); 							// Pin 1.5 High
+	P2OUT |= (cs_signal); 							// Pin High
 
 	_delay_cycles(150);
 
 	return (received_ch);
+}
+
+void Uart_putchar(char c)
+{
+    /* Wait for the transmit buffer to be ready */
+    while (!(IFG2 & UCA0TXIFG));
+
+    /* Transmit data */
+    UCA0TXBUF = (char) c;
+    __delay_cycles(1300);
+
+}
+
+void Uart_TransmitTxPack(char cmd,unsigned char* data, unsigned char length) {
+  char txPackArray[255];
+  char i = 4;
+  // 01 01 09 01 00
+  //build Buffer
+  txPackArray[0] = 0x01;
+  txPackArray[1] = PackCRC(data, length);
+  txPackArray[2] = cmd;
+  txPackArray[3] = length;
+  for (; i < length + 4; i++) {
+    txPackArray[i] = (char) data[i - 4];
+  }
+
+  //Send Buffer Out
+  for (i=0;i< length +4;i++)
+  {
+
+	  Uart_putchar(txPackArray[i]);
+  }
+  rx_ACK += 1;
+  __delay_cycles(1300);
+  do {
+	  if (rx_REC==ACK) {
+		  rx_ACK=0;
+		}
+	 } while (rx_ACK!=0);
+
+
+}
+
+char PackCRC(unsigned char *s, unsigned char length)
+{
+  char c = 0,i = 0;
+
+  for (; i < length; i++) {
+    c ^= s[i];
+  }
+  return c;
 }
 
 
@@ -759,5 +839,35 @@ __interrupt void Port_1(void){
 __interrupt void USCI0RX_ISR(void)
 {
     while (!(IFG2&UCA0TXIFG)); // USCI_A0 TX buffer ready?
-    UCA0TXBUF = UCA0RXBUF; // TX -&amp;gt; RXed character
+    rx_REC =UCA0RXBUF;
+    switch (rx_State) {
+          case rxIDLE:
+            if (rx_REC == 0x01) {
+              rx_State = rxSOF;
+            }
+            break;
+          case rxSOF:
+            rx_State = rxCMD;
+            rx_CRC = rx_REC;
+            break;
+          case rxCMD:
+            rx_State = rxLEN;
+            rx_CMD = rx_REC;
+            break;
+          case rxLEN:
+            rx_State = rxDAT;
+            rx_LEN = rx_REC;
+            break;
+          case rxDAT:
+            if (rec_LEN < rx_LEN) {
+              rxPackArray[rec_LEN] = rx_REC;
+              rec_LEN++;
+            }
+            if (rec_LEN >= rx_LEN) {
+              rx_State = rxCRC;
+              rec_LEN = 0;
+              uart_rx_received=1;
+            }
+            break;
+        }
 }
