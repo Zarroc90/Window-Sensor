@@ -43,7 +43,7 @@ int main(void) {
 
 	__enable_interrupt();
 
-	Uart_TransmitTxPack(0x02,"Feuerwehr",9);
+	//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
 	while(1)
 	{
 		 switch (rx_State) {
@@ -114,18 +114,17 @@ int main(void) {
 				{
 					whoami=SPI_Read(BMX055_A,0x00);									//0xFA
 					//whoami=SPI_Read(BMX055_M,0x40);									//0x32
-					//Uart_putchar("T");
-					//Uart_putchar("e");
-					//Uart_putchar("s");
-					//Uart_putchar("t");
 					if (read == 1) {
 						Read_Accelorameter(accelorameter_raw);
-						ax=accelorameter_raw[0]*aRes;
-						ay=accelorameter_raw[1]*aRes;
-						az=accelorameter_raw[2]*aRes;
+						ax=accelorameter_raw[0]*aRes*1000;
+						ay=accelorameter_raw[1]*aRes*1000;
+						az=accelorameter_raw[2]*aRes*1000;
 						read=0;
 					}
-
+					//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
+					Uart_TransmitTxPack(0x02,((char)((int)ax)),9);
+					Uart_TransmitTxPack(0x02,ay,9);
+					Uart_TransmitTxPack(0x02,az,9);
 					/*Read_Gyroscope(gyroscope_raw);
 					gx=gyroscope_raw[0]*gRes;
 					gy=gyroscope_raw[1]*gRes;
