@@ -10,6 +10,7 @@ int main(void) {
 	aRes = 4.0/2048.0;
 	gRes = 2000.0/32768.0;
 	mRes = 10.0 * 4219.0/32760.0;
+	const float alpha = 0.5;
 	read =0;
 
 
@@ -122,16 +123,16 @@ int main(void) {
 						read=0;
 					}
 					//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
-					Uart_TransmitTxPack(0x02,((char)((int)ax)),9);
-					Uart_TransmitTxPack(0x02,ay,9);
-					Uart_TransmitTxPack(0x02,az,9);
+					Float_to_Char_array(ax,ax_type);
+					Float_to_Char_array(ay,ay_type);
+					Float_to_Char_array(az,az_type);
+					Uart_TransmitTxPack(txAX,ax_char,2);
+					Uart_TransmitTxPack(txAY,ay_char,2);
+					Uart_TransmitTxPack(txAZ,az_char,2);
 					/*Read_Gyroscope(gyroscope_raw);
 					gx=gyroscope_raw[0]*gRes;
 					gy=gyroscope_raw[1]*gRes;
 					gz=gyroscope_raw[2]*gRes;
-					test_0=SPI_Read(BMX055_M,0x4e);
-					test_1=SPI_Read(BMX055_M,BMX055_MAG_PWR_CNTL1);
-					test_2=SPI_Read(BMX055_M,0x4c);
 					Read_Magnetometer(magnetometer_raw);
 					mx=magnetometer_raw[0]*0.079;
 					my=magnetometer_raw[1]*0.079;
@@ -159,31 +160,53 @@ int main(void) {
 					break;
 			}
 
+		//Low Pass Filter
+		pax = ax * alpha + (pax * (1.0 - alpha));
+		pay = ay * alpha + (pay * (1.0 - alpha));
+		paz = az * alpha + (paz * (1.0 - alpha));
+
+		//Roll & Pitch Equations
+		roll  = (atan2f(-pay, paz)*180.0)/M_PI;
+		pitch = (atan2f(pax, sqrtf(pay*pay + paz*paz))*180.0)/M_PI;
+
+		Float_to_Char_array(roll,roll_type);
+		Float_to_Char_array(pitch,pitch_type);
+		Uart_TransmitTxPack(txRoll,roll_char,2);
+		Uart_TransmitTxPack(txPitch,pitch_char,2);
 
 
-		/*char str[7];
-
-		sprintf(str,"%d",((int) (ax*1000)));
-		String_number_rightify((ax*1000),str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(1)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-		sprintf(str,"%d",((int) (ay*1000)));
-		String_number_rightify((ay*1000),str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(3)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-		sprintf(str,"%d",((int) (az*1000)));
-		String_number_rightify((az*1000),str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(5)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-
-		sprintf(str,"%d",((int) gx));
-		String_number_rightify(gx,str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(7)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-		sprintf(str,"%d",((int) gy));
-		String_number_rightify(gy,str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(9)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-		sprintf(str,"%d",((int) gz));
-		String_number_rightify(gz,str);
-		lcdPutS(str,(lcdTextX(5)),(lcdTextY(11)),(decodeRgbValue(0,0,0)),(decodeRgbValue(255,255,255)));
-		*/
 	}
+}
+
+void Float_to_Char_array(float value,enum result_type type){
+
+	int transform;
+	transform=value;
+	switch (type) {
+		case ax_type:
+			ax_char[0]=((transform)>>8) & 0xFF;
+			ax_char[1]=transform & 0xFF;
+			break;
+		case ay_type:
+			ay_char[0]=((transform)>>8) & 0xFF;
+			ay_char[1]=transform & 0xFF;
+			break;
+		case az_type:
+			az_char[0]=((transform)>>8) & 0xFF;
+			az_char[1]=transform & 0xFF;
+			break;
+		case roll_type:
+			roll_char[0]=((transform)>>8) & 0xFF;
+			roll_char[1]=transform & 0xFF;
+			break;
+		case pitch_type:
+			pitch_char[0]=((transform)>>8) & 0xFF;
+			pitch_char[1]=transform & 0xFF;
+			break;
+		default:
+			break;
+	}
+
 }
 
 void String_number_rightify(float number, char str[]){
@@ -333,9 +356,9 @@ void Init(){
 	//P1DIR |= BIT6;											//LED2 as OUtput
 	//P1OUT &= ~BIT6;											//LED2 as off
 
-	/*P1IE |= BIT3;											//P1.3 Interrupt enabled
+	P1IE |= BIT3;											//P1.3 Interrupt enabled
 	P1IES &= ~BIT3;											//Interrupt direction from low to high
-	P1IFG &= ~BIT3;											//P1.3 IFG is cleared*/
+	P1IFG &= ~BIT3;											//P1.3 IFG is cleared
 
 	//----------------Init SPI End----------------------------------------------------------------------
 
