@@ -7,10 +7,11 @@ int main(void) {
 
 	sensor=BMX055;
 	received_ch=0;
-	aRes = 4.0/2048.0;
-	gRes = 2000.0/32768.0;
-	mRes = 10.0 * 4219.0/32760.0;
+	const float aRes = 4.0/2048.0;
+	const float gRes = 2000.0/32768.0;
+	const float mRes = 10.0 * 4219.0/32760.0;
 	const float alpha = 0.5;
+	const float OneeightyDivPi = 180.0/M_PI;
 	read =0;
 
 
@@ -44,7 +45,25 @@ int main(void) {
 
 	__enable_interrupt();
 
-	//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
+
+	unsigned int count1;
+	count1 = 0;
+
+	do{
+		if (read == 1) {
+		Read_Accelorameter(accelorameter_raw);
+		sstatex = sstatex + accelorameter_raw[0];              // Accumulate Samples
+		sstatey = sstatey + accelorameter_raw[1];
+		sstatez = sstatez + accelorameter_raw[2];
+		count1++;
+		}
+	}while(count1!=0x0400);                    // 1024 times
+		sstatex=(sstatex>>10)*aRes*1000;                       // division between 1024
+		sstatey=(sstatey>>10)*aRes*1000;
+		sstatez=(sstatez>>10)*aRes*1000;
+
+
+
 	while(1)
 	{
 		 switch (rx_State) {
@@ -123,12 +142,7 @@ int main(void) {
 						read=0;
 					}
 					//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
-					Float_to_Char_array(ax,ax_type);
-					Float_to_Char_array(ay,ay_type);
-					Float_to_Char_array(az,az_type);
-					Uart_TransmitTxPack(txAX,ax_char,2);
-					Uart_TransmitTxPack(txAY,ay_char,2);
-					Uart_TransmitTxPack(txAZ,az_char,2);
+
 					/*Read_Gyroscope(gyroscope_raw);
 					gx=gyroscope_raw[0]*gRes;
 					gy=gyroscope_raw[1]*gRes;
@@ -161,18 +175,29 @@ int main(void) {
 			}
 
 		//Low Pass Filter
-		pax = ax * alpha + (pax * (1.0 - alpha));
-		pay = ay * alpha + (pay * (1.0 - alpha));
-		paz = az * alpha + (paz * (1.0 - alpha));
+		pax = ax * alpha + (pax * 0.5);
+		pay = ay * alpha + (pay * 0.5);
+		paz = az * alpha + (paz * 0.5);
+
+		Float_to_Char_array(pax,ax_type);
+		Float_to_Char_array(pay,ay_type);
+		Float_to_Char_array(paz,az_type);
+		Uart_TransmitTxPack(txAX,ax_char,2);
+		Uart_TransmitTxPack(txAY,ay_char,2);
+		Uart_TransmitTxPack(txAZ,az_char,2);
 
 		//Roll & Pitch Equations
-		roll  = (atan2f(-pay, paz)*180.0)/M_PI;
-		pitch = (atan2f(pax, sqrtf(pay*pay + paz*paz))*180.0)/M_PI;
+		roll  = atan2f(-pay, paz);
+		roll  = roll*OneeightyDivPi;
+		pitch = atan2f(pax, sqrtf(pay*pay + paz*paz));
+		pitch = pitch*OneeightyDivPi;
 
 		Float_to_Char_array(roll,roll_type);
 		Float_to_Char_array(pitch,pitch_type);
 		Uart_TransmitTxPack(txRoll,roll_char,2);
 		Uart_TransmitTxPack(txPitch,pitch_char,2);
+
+		Position();
 
 
 	}
@@ -181,27 +206,31 @@ int main(void) {
 void Float_to_Char_array(float value,enum result_type type){
 
 	int transform;
-	transform=value;
+	transform=(int)value;
 	switch (type) {
 		case ax_type:
-			ax_char[0]=((transform)>>8) & 0xFF;
-			ax_char[1]=transform & 0xFF;
+			ax_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			ax_char[1]=(unsigned char)(transform & 0xFF);
 			break;
 		case ay_type:
-			ay_char[0]=((transform)>>8) & 0xFF;
-			ay_char[1]=transform & 0xFF;
+			ay_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			ay_char[1]=(unsigned char)(transform & 0xFF);
 			break;
 		case az_type:
-			az_char[0]=((transform)>>8) & 0xFF;
-			az_char[1]=transform & 0xFF;
+			az_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			az_char[1]=(unsigned char)(transform & 0xFF);
 			break;
 		case roll_type:
-			roll_char[0]=((transform)>>8) & 0xFF;
-			roll_char[1]=transform & 0xFF;
+			roll_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			roll_char[1]=(unsigned char)(transform & 0xFF);
 			break;
 		case pitch_type:
-			pitch_char[0]=((transform)>>8) & 0xFF;
-			pitch_char[1]=transform & 0xFF;
+			pitch_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			pitch_char[1]=(unsigned char)(transform & 0xFF);
+			break;
+		case posX_type:
+			posX_char[0]=(unsigned char)(((transform)>>8) & 0xFF);
+			posX_char[1]=(unsigned char)(transform & 0xFF);
 			break;
 		default:
 			break;
@@ -460,6 +489,24 @@ void Init_BMX055(){
 	SPI_Write(BMX055_M,BMX055_MAG_REP_XY,0x04);								//Rep x/y 	=9  -> 2 x 4 +1 =9
 	SPI_Write(BMX055_M,BMX055_MAG_REP_Z,0x0E);								//Rep z 	=15 -> 14 +1 =15
 
+	//-------- Get Calibration
+
+	/*unsigned int count1;
+	count1 = 0;
+
+	do{
+	Read_Accelorameter(accelorameter_raw);
+	ax=accelorameter_raw[0]*aRes*1000;
+	ay=accelorameter_raw[1]*aRes*1000;
+	az=accelorameter_raw[2]*aRes*1000;
+	sstatex = sstatex + ax;              // Accumulate Samples
+	sstatey = sstatey + ay;
+	sstatez = sstatez + az;
+	count1++;
+	}while(count1!=0x0400);                    // 1024 times
+	sstatex=sstatex>>10;                       // division between 1024
+	sstatey=sstatey>>10;
+	sstatez=sstatez>>10;*/
 	//-------- ACC Low Power Mode 1 100ms sleep interval
 
 	SPI_Write(BMX055_A,BMX055_ACC_PMU_LPW,0x5A);							//ACC Low_power enabled + sleep duration 100ms
@@ -841,6 +888,137 @@ char PackCRC(unsigned char *s, unsigned char length)
   return c;
 }
 
+
+void Position(void)
+{
+
+	accelerationX[1]=(int)ax;
+	accelerationY[1]=(int)ay;
+
+	accelerationX[1] = accelerationX[1] - (int)sstatex; //eliminating zero reference
+	//offset of the acceleration data
+	accelerationY[1] = accelerationY[1] - (int)sstatey; // to obtain positive and negative
+	//acceleration
+
+
+    if ((accelerationX[1] <=10)&&(accelerationX[1] >= -10)) //Discrimination window applied
+      {accelerationX[1] = 0;}                        // to the X accelerationX[1]is acceleration
+     //variable
+
+    if ((accelerationY[1] <=10)&&(accelerationY[1] >= -10))
+      {accelerationY[1] = 0;}
+
+    //first X integration:
+    velocityx[1]= velocityx[0]+ (int)accelerationX[0]+ (((int)accelerationX[1] -(int)accelerationX[0])>>1);
+    //second X integration:
+    positionX[1]= positionX[0] + velocityx[0] + ((velocityx[1] - velocityx[0])>>1);
+    //first Y integration:
+    velocityy[1] = velocityy[0] + (int)accelerationY[0] + (((int)accelerationY[1] -(int)accelerationY[0])>>1);
+    //second Y integration:
+    positionY[1] = positionY[0] + velocityy[0] + ((velocityy[1] - velocityy[0])>>1);
+
+    accelerationX[0] = accelerationX[1];  //The current a value must be sent
+    //to the previous a
+    accelerationY[0] = accelerationY[1];     //variable in order to introduce the new
+    //a value.
+
+    velocityx[0] = velocityx[1];          //Same done for the velocity variable
+    velocityy[0] = velocityy[1];
+
+
+    positionX[1] = positionX[1]<<18;      //The idea behind this shifting (multiplication)
+     //is a sensibility adjustment.
+    positionY[1] = positionY[1]<<18;      //Some applications require adjustments to a
+     //particular situation				//i.e. mouse application
+
+    //Data_transfer();
+
+    positionX[1] = positionX[1]>>18;      //once the variables are sent them must return to
+    positionY[1] = positionY[1]>>18;      //their original state
+
+    Movement_end_check();
+
+    positionX[0] = positionX[1];          //actual position data must be sent to the
+    positionY[0] = positionY[1];      //previous position
+
+    direction = 0;                        // data variable to direction variable reset
+}
+
+void Movement_end_check(void)
+{
+  if (accelerationX[1]==0)   //we count the number of acceleration samples that equals cero
+    { countx++;}
+  else { countx =0;}
+
+  if (countx>=25)          //if this number exceeds 25, we can assume that velocity is cero
+   {
+   velocityx[1]=0;
+   velocityx[0]=0;
+   }
+
+   if (accelerationY[1]==0)   //we do the same for the Y axis
+   { county++;}
+  else { county =0;}
+
+  if (county>=25)
+   {
+   velocityy[1]=0;
+   velocityy[0]=0;
+   }
+}
+
+void Data_transfer(void)
+{
+
+ signed long positionXbkp;
+ signed long positionYbkp;
+ unsigned char posx_seg[4], posy_seg[4];
+
+
+  if (positionX[1]>=0) {             						//This line compares the sign of the X direction data
+  direction= (direction | 0x10);     						//if its positive the most significant byte
+  posx_seg[0]= positionX[1] & 0x000000FF;     				// is set to 1 else it is set to 8
+  posx_seg[1]= (positionX[1]>>8) & 0x000000FF; 				// the data is also managed in the
+  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	// subsequent lines in order to
+  posx_seg[2]= (positionX[1]>>16) & 0x000000FF;  			// be sent. The 32 bit variable must be
+  posx_seg[3]= (positionX[1]>>24) & 0x000000FF;  			// split into 4 different 8 bit
+    														// variables in order to be sent via
+    														// the 8 bit SCI frame
+   }
+
+
+  else {direction=(direction | 0x80);
+   positionXbkp=positionX[1]-1;
+   positionXbkp=positionXbkp^0xFFFFFFFF;
+   posx_seg[0]= positionXbkp & 0x000000FF;
+   posx_seg[1]= (positionXbkp>>8) & 0x000000FF;
+   posx_seg[2]= (positionXbkp>>16) & 0x000000FF;
+   posx_seg[3]= (positionXbkp>>24) & 0x000000FF;
+   }
+
+
+  if (positionY[1]>=0) {                      //  Same management than in the previous case
+   direction= (direction | 0x08);        // but with the Y data.
+   posy_seg[0]= positionY[1] & 0x000000FF;
+   posy_seg[1]= (positionY[1]>>8) & 0x000000FF;
+   posy_seg[2]= (positionY[1]>>16) & 0x000000FF;
+   posy_seg[3]= (positionY[1]>>24) & 0x000000FF;
+   }
+
+  else {direction= (direction | 0x01);
+   positionYbkp=positionY[1]-1;
+   positionYbkp=positionYbkp^0xFFFFFFFF;
+   posy_seg[0]= positionYbkp & 0x000000FF;
+   posy_seg[1]= (positionYbkp>>8) & 0x000000FF;
+   posy_seg[2]= (positionYbkp>>16) & 0x000000FF;
+   posy_seg[3]= (positionYbkp>>24) & 0x000000FF;
+   }
+
+  //Insert transmission of Position
+
+
+
+}
 
 
 #pragma vector=PORT1_VECTOR
