@@ -91,9 +91,9 @@ float ax,ay,az,gx,gy,gz,mx,my,mz;
 float pitch,roll,pax,pay,paz;
 float temperature;
 unsigned char ax_char[2],ay_char[2],az_char[2],gx_char[2],gy_char[2],gz_char[2],mx_char[2],my_char[2],mz_char[2],roll_char[2],pitch_char[2],posX_char[2],direction,countx,county;
-long sstatex,sstatey,sstatez;
-signed long velocityx[2],velocityy[2],positionX[2],positionY[2];
-signed int accelerationX[2],accelerationY[2];
+//long sstatex,sstatey,sstatez;
+//signed long velocityx[2],velocityy[2],positionX[2],positionY[2];
+//signed int accelerationX[2],accelerationY[2];
 
 
 

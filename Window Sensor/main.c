@@ -5,7 +5,7 @@ int main(void) {
 
 	//const float alpha=0.5;
 
-	sensor=BMX055;
+	sensor=BMI160;
 	received_ch=0;
 	const float aRes = 4.0/2048.0;
 	const float gRes = 2000.0/32768.0;
@@ -44,25 +44,6 @@ int main(void) {
 	}
 
 	__enable_interrupt();
-
-
-	unsigned int count1;
-	count1 = 0;
-
-	do{
-		if (read == 1) {
-		Read_Accelorameter(accelorameter_raw);
-		sstatex = sstatex + accelorameter_raw[0];              // Accumulate Samples
-		sstatey = sstatey + accelorameter_raw[1];
-		sstatez = sstatez + accelorameter_raw[2];
-		count1++;
-		}
-	}while(count1!=0x0400);                    // 1024 times
-		sstatex=(sstatex>>10)*aRes*1000;                       // division between 1024
-		sstatey=(sstatey>>10)*aRes*1000;
-		sstatez=(sstatez>>10)*aRes*1000;
-
-
 
 	while(1)
 	{
@@ -139,9 +120,27 @@ int main(void) {
 						ax=accelorameter_raw[0]*aRes*1000;
 						ay=accelorameter_raw[1]*aRes*1000;
 						az=accelorameter_raw[2]*aRes*1000;
+
+						//P1IFG &= ~BIT3;				//Clear Interrupt Flag
+						//P1IE &= ~BIT3;				//deactivate Interrupt
+						SPI_Write(BMX055_G,BMX055_GYRO_LPM1,0x00);
+
+						__delay_cycles(1000000);
+						/*SPI_Write(BMX055_G,BMX055_GYRO_RANGE,GFS_2000DPS);
+						SPI_Write(BMX055_G,BMX055_GYRO_BW,(0x80|G_2000Hz230Hz));
+						__delay_cycles(10000);
+						Read_Gyroscope(gyroscope_raw);
+						gx=gyroscope_raw[0]*gRes;
+						gy=gyroscope_raw[1]*gRes;
+						gz=gyroscope_raw[2]*gRes;*/
+
+						SPI_Write(BMX055_G,BMX055_GYRO_LPM1,0x20);
+						//SPI_Write(BMX055_A,BMX055_ACC_INT_RST_LATCH,0x8F);						//ACC INterrupt latched
+						//P1IFG &= ~BIT3;				//Clear Interrupt Flag
+						//P1IE |= BIT3;						//Activate interrupt
+						//Init_BMX055();
 						read=0;
 					}
-					//Uart_TransmitTxPack(0x02,"Feuerwehr",9);
 
 					/*Read_Gyroscope(gyroscope_raw);
 					gx=gyroscope_raw[0]*gRes;
@@ -156,17 +155,20 @@ int main(void) {
 				}
 				case BMI160:
 				{
-					whoami=SPI_Read(CS_0,0x00);							//0xD1
-					test_0=SPI_Read(BMI160_AG,BMI160_USER_ERROR_ADDR);
-					test_1=SPI_Read(BMI160_AG,BMI160_USER_PMU_STAT_ADDR);
-					Read_Accelorameter(accelorameter_raw);
-					ax=accelorameter_raw[0]*aRes;
-					ay=accelorameter_raw[1]*aRes;
-					az=accelorameter_raw[2]*aRes;
-					Read_Gyroscope(gyroscope_raw);
-					gx=gyroscope_raw[0]*gRes;
-					gy=gyroscope_raw[1]*gRes;
-					gz=gyroscope_raw[2]*gRes;
+					//whoami=SPI_Read(CS_0,0x00);							//0xD1
+					test_0=SPI_Read(BMI160_AG,BMI160_USER_PMU_STAT_ADDR);
+					//test_1=SPI_Read(BMI160_AG,BMI160_USER_INTR_ENABLE_0_ADDR);
+					if (read == 1) {
+						Read_Accelorameter(accelorameter_raw);
+						ax=accelorameter_raw[0]*aRes*1000;
+						ay=accelorameter_raw[1]*aRes*1000;
+						az=accelorameter_raw[2]*aRes*1000;
+						Read_Gyroscope(gyroscope_raw);
+						gx=gyroscope_raw[0]*gRes;
+						gy=gyroscope_raw[1]*gRes;
+						gz=gyroscope_raw[2]*gRes;
+						read=0;
+					}
 					//temperature = ((float)Read_Temp()/2 + 23.0);
 					break;
 				}
@@ -174,6 +176,7 @@ int main(void) {
 					break;
 			}
 
+		//SPI_Write(BMX055_G,BMX055_GYRO_LPM1,0x00);
 		//Low Pass Filter
 		pax = ax * alpha + (pax * 0.5);
 		pay = ay * alpha + (pay * 0.5);
@@ -182,9 +185,15 @@ int main(void) {
 		Float_to_Char_array(pax,ax_type);
 		Float_to_Char_array(pay,ay_type);
 		Float_to_Char_array(paz,az_type);
+		Float_to_Char_array(gx,gx_type);
+		Float_to_Char_array(gy,gy_type);
+		Float_to_Char_array(gz,gz_type);
 		Uart_TransmitTxPack(txAX,ax_char,2);
 		Uart_TransmitTxPack(txAY,ay_char,2);
 		Uart_TransmitTxPack(txAZ,az_char,2);
+		Uart_TransmitTxPack(txGX,gx_char,2);
+		Uart_TransmitTxPack(txGY,gy_char,2);
+		Uart_TransmitTxPack(txGZ,gz_char,2);
 
 		//Roll & Pitch Equations
 		roll  = atan2f(-pay, paz);
@@ -197,8 +206,8 @@ int main(void) {
 		Uart_TransmitTxPack(txRoll,roll_char,2);
 		Uart_TransmitTxPack(txPitch,pitch_char,2);
 
-		Position();
-
+		//Position();
+		_BIS_SR(LPM3_bits + GIE);
 
 	}
 }
@@ -342,9 +351,9 @@ void Init(){
 	//--------------Init SPI ----------------------------------------------------------------------
 
 	// Sensor			MPU9250			LSM9DS1			BMX055			BMI160
-	//Port 1.0	CS											M
-	//Port 1.1	CS							M				G
-	//Port 1.2  CS		AGM					AG				A
+	//Port 2.0	CS		AGM					AG				A			AG
+	//Port 2.1	CS							M				G
+	//Port 2.2  CS											M
 	//Port 1.3	Int
 	//Port 1.5  CLK
 	//Port 1.6	MISO
@@ -491,36 +500,30 @@ void Init_BMX055(){
 
 	//-------- Get Calibration
 
-	/*unsigned int count1;
-	count1 = 0;
 
-	do{
-	Read_Accelorameter(accelorameter_raw);
-	ax=accelorameter_raw[0]*aRes*1000;
-	ay=accelorameter_raw[1]*aRes*1000;
-	az=accelorameter_raw[2]*aRes*1000;
-	sstatex = sstatex + ax;              // Accumulate Samples
-	sstatey = sstatey + ay;
-	sstatez = sstatez + az;
-	count1++;
-	}while(count1!=0x0400);                    // 1024 times
-	sstatex=sstatex>>10;                       // division between 1024
-	sstatey=sstatey>>10;
-	sstatez=sstatez>>10;*/
 	//-------- ACC Low Power Mode 1 100ms sleep interval
 
 	SPI_Write(BMX055_A,BMX055_ACC_PMU_LPW,0x5A);							//ACC Low_power enabled + sleep duration 100ms
 	SPI_Write(BMX055_A,BMX055_ACC_PMU_LOW_POWER,0x00);						//ACC LPM1 + event driven time base mode
 
-	SPI_Write(BMX055_A,BMX055_ACC_INT_EN_1,0x10);							//ACC interrupt new data ready enabled
-	SPI_Write(BMX055_A,BMX055_ACC_INT_MAP_1,0x01);							//ACC Data ready interrupt Int1 Pin
+	SPI_Write(BMX055_A,BMX055_ACC_INT_EN_0,0x03);							//ACC enable x,y,z-Axis slope interrupt (motion)
+	SPI_Write(BMX055_A,BMX055_ACC_INT_RST_LATCH,0x03);						//ACC INterrupt 2s temporary
+	SPI_Write(BMX055_A,BMX055_ACC_INT_5,0x01);								//ACC slope duration 1+1 consecutive samples over slope_th
+	SPI_Write(BMX055_A,BMX055_ACC_INT_6,0x01);								//ACC Threshold 7.81mg* 1
+	SPI_Write(BMX055_A,BMX055_ACC_INT_MAP_0,0x04);							//ACC Map Slope intterupt to Int1
+	SPI_Write(BMX055_A,BMX055_ACC_INT_MAP_2,0x04);							//ACC MAp Slope to int2 pin
+
+
+	//SPI_Write(BMX055_A,BMX055_ACC_INT_EN_1,0x10);							//ACC interrupt new data ready enabled
+	//SPI_Write(BMX055_A,BMX055_ACC_INT_MAP_1,0x01);						//ACC Data ready interrupt Int1 Pin
 
 	//------- Gyro in deep suspend mode
 
+
+	//SPI_Write(BMX055_G,BMX055_GYRO_LPM2,0x20);								//Gyro external Wakeup Int3 Pin
+	//SPI_Write(BMX055_G,BMX055_GYRO_INT_EN_0,0x80);							//Gyro enable Data Ready interrupt
+	//SPI_Write(BMX055_G,BMX055_GYRO_INT_MAP_1,0x80);							//Gyro Interrupt on Int4 Pin
 	SPI_Write(BMX055_G,BMX055_GYRO_LPM1,0x20);								//Gyro in deep-suspend mode
-	SPI_Write(BMX055_G,BMX055_GYRO_LPM2,0x10);								//Gyro external Wakeup Int3 Pin
-	SPI_Write(BMX055_G,BMX055_GYRO_INT_EN_0,0x80);							//Gyro enable Data Ready interrupt
-	SPI_Write(BMX055_G,BMX055_GYRO_INT_MAP_1,0x80);							//Gyro Interrupt on Int4 Pin
 
 	//------- Magnetometer
 
@@ -531,15 +534,43 @@ void Init_BMX055(){
 
 void Init_BMI160(){
 
-	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0xB6);			//softreset
+	/*SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0xB6);			//softreset
 	__delay_cycles(200000);
 	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_CONFIG_ADDR,0x23);	//ACC CONFIG: 2 -> normal mode, 3 ODR 3,125Hz
-	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_RANGE_ADDR,0x05);		//ACC Range 0x03 -> 2g, 0x05 -> 4g, 0x08 ->8g
+	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_RANGE_ADDR,0x03);		//ACC Range 0x03 -> 2g, 0x05 -> 4g, 0x08 ->8g
 	SPI_Write(BMI160_AG,BMI160_USER_GYRO_CONFIG_ADDR,0x26);		//GYRO Config 2 -> normal Mode, 6 -> 25HZ output rate
 	SPI_Write(BMI160_AG,BMI160_USER_GYRO_RANGE_ADDR,0x00);		//Gyro Range: 2000°/s
 	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x11);			//Start ACC
 	__delay_cycles(10000);
 	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x15);			//Start Gyro
+	*/
+
+	//-----------LOW Power Mode----------------
+
+	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0xB6);			//softreset
+	__delay_cycles(200000);
+	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_CONFIG_ADDR,0x95);	//ACC LP Mode US=1, BWP=AVGus =1 , ODR = 12,5Hz
+	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_RANGE_ADDR,0x05);		//ACC Range 0x03 -> 2g, 0x05 -> 4g, 0x08 ->8g
+	SPI_Write(BMI160_AG,BMI160_USER_GYRO_CONFIG_ADDR,0x28);		//Gyro Config 2 8 -> 50Hz
+	SPI_Write(BMI160_AG,BMI160_USER_GYRO_RANGE_ADDR,0x00);		//Gyro Range: 2000°/s
+
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_MOTION_0_ADDR,0x01);	//Mini. consec samples over Motion Threshold value
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_MOTION_1_ADDR,0x0a);	//anymotion Threshold = 3 *grange(7.81mg)
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_MOTION_2_ADDR,0x04);	//nomotion Threshold = 2 *grange(7.81mg)
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_MOTION_3_ADDR,0x01);	//no motion config
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_ENABLE_0_ADDR,0x07);	//Enable Any Motion Interrupt on all 3 Acc axis
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_ENABLE_2_ADDR,0x07);	//Enable noMotion Interrupt on all 3 Acc axis
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_MAP_0_ADDR,0x04);		//Interrupt MAP to Int 1
+	SPI_Write(BMI160_AG,BMI160_USER_INTR_OUT_CTRL_ADDR,0x0A);	//Interrupt 1 Enable + Active High
+
+	SPI_Write(BMI160_AG,BMI160_USER_PMU_TRIGGER_ADDR,0x34);		//Gyro sleep to suspend, wakeup if anymotion, sleep when nomotion
+	__delay_cycles(10000);
+	//SPI_Write(BMI160_AG,BMI160_USER_INTR_MAP_1_ADDR,0x07);		//Interrupt MAP to Int 1
+	__delay_cycles(10000);
+	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x12);			//Start ACC LpMode
+	__delay_cycles(10000);
+	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x14);			//Start Gyro Suspend Mode
+
 
 
 }
@@ -869,11 +900,13 @@ void Uart_TransmitTxPack(char cmd,unsigned char* data, unsigned char length) {
   }
   rx_ACK += 1;
   __delay_cycles(1300);
+  i=0;
   do {
+	  i++;
 	  if (rx_REC==ACK) {
 		  rx_ACK=0;
 		}
-	 } while (rx_ACK!=0);
+	 } while (i<4 ^ rx_ACK!=0);
 
 
 }
@@ -889,7 +922,7 @@ char PackCRC(unsigned char *s, unsigned char length)
 }
 
 
-void Position(void)
+/*void Position(void)
 {
 
 	accelerationX[1]=(int)ax;
@@ -1019,7 +1052,7 @@ void Data_transfer(void)
 
 
 }
-
+*/
 
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void){
@@ -1029,10 +1062,11 @@ __interrupt void Port_1(void){
 	P1IFG &= ~BIT3;				//Clear Interrupt Flag
 	SPI_Read(MPU9250_AGM,MPUREG_INT_STATUS);//Clear INterrupt MPU9250*/
 
-	//BMX055
-
-	read=1;
+	//BMX055 & BMI160
 	P1IFG &= ~BIT3;				//Clear Interrupt Flag
+	//P1IE &= ~BIT3;											//P1.3 Interrupt disabled
+	read=1;
+	LPM3_EXIT;
 }
 
 #pragma vector=USCIAB0RX_VECTOR
@@ -1070,4 +1104,5 @@ __interrupt void USCI0RX_ISR(void)
             }
             break;
         }
+    LPM3_EXIT;
 }
