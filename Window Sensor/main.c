@@ -156,7 +156,7 @@ int main(void) {
 				case BMI160:
 				{
 					//whoami=SPI_Read(CS_0,0x00);							//0xD1
-					test_0=SPI_Read(BMI160_AG,BMI160_USER_PMU_STAT_ADDR);
+					//test_0=SPI_Read(BMI160_AG,BMI160_USER_PMU_STAT_ADDR);
 					//test_1=SPI_Read(BMI160_AG,BMI160_USER_INTR_ENABLE_0_ADDR);
 					if (read == 1) {
 						Read_Accelorameter(accelorameter_raw);
@@ -549,6 +549,11 @@ void Init_BMI160(){
 
 	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0xB6);			//softreset
 	__delay_cycles(200000);
+	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x11);			//Start ACC
+	__delay_cycles(100000);
+	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x15);			//Start Gyro
+	__delay_cycles(100000);
+
 	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_CONFIG_ADDR,0x95);	//ACC LP Mode US=1, BWP=AVGus =1 , ODR = 12,5Hz
 	SPI_Write(BMI160_AG,BMI160_USER_ACCEL_RANGE_ADDR,0x05);		//ACC Range 0x03 -> 2g, 0x05 -> 4g, 0x08 ->8g
 	SPI_Write(BMI160_AG,BMI160_USER_GYRO_CONFIG_ADDR,0x28);		//Gyro Config 2 8 -> 50Hz
@@ -563,13 +568,18 @@ void Init_BMI160(){
 	SPI_Write(BMI160_AG,BMI160_USER_INTR_MAP_0_ADDR,0x04);		//Interrupt MAP to Int 1
 	SPI_Write(BMI160_AG,BMI160_USER_INTR_OUT_CTRL_ADDR,0x0A);	//Interrupt 1 Enable + Active High
 
-	SPI_Write(BMI160_AG,BMI160_USER_PMU_TRIGGER_ADDR,0x34);		//Gyro sleep to suspend, wakeup if anymotion, sleep when nomotion
-	__delay_cycles(10000);
-	//SPI_Write(BMI160_AG,BMI160_USER_INTR_MAP_1_ADDR,0x07);		//Interrupt MAP to Int 1
-	__delay_cycles(10000);
 	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x12);			//Start ACC LpMode
-	__delay_cycles(10000);
+	__delay_cycles(100000);
 	SPI_Write(BMI160_AG,BMI160_CMD_COMMANDS_ADDR,0x14);			//Start Gyro Suspend Mode
+	__delay_cycles(100000);
+
+	SPI_Write(BMI160_AG,BMI160_USER_PMU_TRIGGER_ADDR,0x34);		//Gyro sleep to suspend, wakeup if anymotion, sleep when nomotion
+
+
+	//SPI_Write(BMI160_AG,BMI160_USER_INTR_MAP_1_ADDR,0x07);		//Interrupt MAP to Int 1
+
+
+
 
 
 
